@@ -1,0 +1,124 @@
+groups: 
+  - name: shorturl.rules
+    interval: 15s
+    rules:
+
+
+    #alert 1: Service completely down
+
+    - alert: ShortURLServiceDown
+      expr: up{job="shorturl-api"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "URL shortener API is unreachable"
+        description: "Prometheus cannot scrape {{$labels.instance}}. Service may be down."
+        runbook: "https://github.com/you/repo/blob/main/docs/runbooks/service-down.md"
+
+    
+    #ALERT 2: High error rate
+
+    - alert: HighErrorRateWarning
+
+      expr: |
+        rate(shorturl_requests_total{status_code=~"5.."}[5m])
+        /
+        rate(shorturl_requests_total[5m])
+        > 0.01
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Error rate above 1% (SLO warning)"
+        description: "Error rate is {{ $value | humanizePercentage}} over last 5 minutes."
+        runbook: "https://github.com/you/repo/blob/main/docs/runbooks/high-error-rate.md"
+
+    - alert: HighErrorRateCritical
+      expr: |
+        rate(shorturl_requests_total{status_code=~"5.."}[5m])
+        /
+        rate(shorturl_requests_total[5m])
+        > 0.05
+
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Error rate above 5%(SLO breach)"
+        description: "Error rate is {{$value | humanizePercentage }}.SLO is being violated."
+
+    #Alert-3: SLO latency violation
+
+    - alert: HighLatencyP95
+      expr: |
+          histogram_quantile(
+            0.95,
+            rate(shorturl_request_duration_seconds_bucket{endpoint="/r"}[5m])
+          ) > 0.2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Redirect p95 latency above 200ms SLO"
+        description: "p95 latency is {{ $value | humanizeDuration }}. SLO target is 200ms."
+        runbook: "https://github.com/you/repo/blob/main/docs/runbooks/high-latency.md"
+
+    
+    # ── ALERT 4: Redis unavailable ────────────────────────────
+      # redis_up is provided by the Redis Exporter.
+      # This is a WARNING not CRITICAL because our app degrades
+      # gracefully without Redis (falls back to DB).
+    - alert: RedisDown
+      expr: redis_up == 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Redis cache is unavailable"
+        description: "Redis exporter reports redis_up=0. Cache misses will spike. DB load will increase."
+
+
+     # ── ALERT 5: Disk usage high ──────────────────────────────
+      # node_filesystem_* metrics come from Node Exporter.
+      # We calculate used / total and alert at 80%.
+    - alert: DiskUsageHigh
+      expr: |
+          (
+            node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+            - node_filesystem_free_bytes{fstype!~"tmpfs|overlay"}
+          )
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          > 0.80
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Disk usage above 80% on {{ $labels.mountpoint }}"
+        description: "Disk is {{ $value | humanizePercentage }} full."
+        runbook: "https://github.com/you/repo/blob/main/docs/runbooks/disk-full.md"
+
+
+    # ── ALERT 6: Error budget fast burn rate ─────────────────
+      # This is the most sophisticated alert. A burn rate of 14x
+      # means we're consuming our 30-day error budget 14x faster
+      # than normal. At 14x, the budget exhausts in ~50 hours.
+      # This gives us time to act before the SLO is breached.
+      # (from Google SRE Workbook, Chapter 5)
+    - alert: ErrorBudgetFastBurn
+      expr: |
+          (
+            rate(shorturl_requests_total{status_code=~"5.."}[1h])
+            /
+            rate(shorturl_requests_total[1h])
+          ) > (14 * 0.001)
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Error budget burning at 14x rate — will exhaust in ~50h"
+        description: "Current error rate {{ $value | humanizePercentage }} exceeds 14x burn threshold."
+
+
+

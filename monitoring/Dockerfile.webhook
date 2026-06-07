@@ -1,0 +1,6 @@
+FROM python:3.13-slim
+WORKDIR /app
+RUN pip install flask
+COPY webhook_logger.py .
+CMD ["python","webhook_logger.py"]
+
