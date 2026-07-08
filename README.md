@@ -1,70 +1,79 @@
-# Production Reliability Platform
+# Reliability Platform v2
 
-A URL shortener with a complete SRE observability stack — built to demonstrate
-reliability engineering practices: SLO-driven monitoring, automated alerting,
-chaos engineering, and blameless post-mortems.
+A production-style observability and resilience platform built around a URL shortener 
+service — demonstrating SRE practices: connection pooling, structured logging with log 
+aggregation, SLO-driven alerting, and tested backup/recovery procedures.
 
 ## Architecture
 
-[paste your architecture diagram image here]
-`app (Flask) ← nginx → prometheus → grafana → alertmanager`
-Full stack: NGINX · Flask · PostgreSQL · Redis · Prometheus · Grafana · Alertmanager
-+ Node/Redis/Postgres/Blackbox Exporters
+[Paste the full diagram from above as a code block or export as an image]
 
-## Quick start
+**14 containers**, one Docker network:
+NGINX → Flask (pooled connections) → PostgreSQL + Redis
+→ Prometheus (6 scrape targets) → Grafana + Alertmanager
+→ Promtail → Loki (log aggregation)
+
+## Quick Start
 
 ```bash
-git clone https://github.com/you/reliability-platform
+git clone https://github.com/YOURUSERNAME/reliability-platform
 cd reliability-platform
-docker compose up --build -d    # starts all 12 containers
-python3 scripts/load_generator.py --rps 20   # generate traffic
+docker compose up --build -d
+python3 scripts/load_generator.py --rps 20
 ```
 
-| Service       | URL                        | Credentials    |
-|---------------|----------------------------|----------------|
-| App (via NGINX)| http://localhost:8080      | —              |
-| Prometheus    | http://localhost:9090      | —              |
-| Grafana       | http://localhost:3000      | admin/admin123 |
-| Alertmanager  | http://localhost:9093      | —              |
+| Service | URL |
+|---|---|
+| App | http://localhost:8080 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (admin/admin123) |
+| Alertmanager | http://localhost:9093 |
+| Loki | http://localhost:3100 |
 
-## SLOs defined
+## Key Features (v2)
 
-| SLO | Target | Error budget |
-|-----|--------|--------------|
-| Redirect availability | 99.9% success rate | 43.8 min/month |
-| Redirect latency | p95 ≤ 200ms | per 5-minute window |
-| Write availability | 99.5% success rate | per day |
+| Feature | Problem it Solves |
+|---|---|
+| Connection pooling (2-20 conns) | Fixed connection exhaustion observed at 300 req/s in v1 |
+| Structured JSON logging + Loki | Added the "logs" pillar — v1 only had metrics |
+| Automated backup + restore drill | Validated real Recovery Time Objective, not assumed |
 
-See [docs/SLOs.md](docs/SLOs.md) for full definitions and error budget policy.
+## A Real Bug Found and Fixed During Development
 
-## Alert rules
+While wiring up Alertmanager, alerts were firing correctly in Prometheus but never 
+appearing in Alertmanager's UI. Debugging via `docker logs prometheus | grep alertmanager` 
+revealed a DNS resolution failure: `dial tcp: lookup alert_manager: no such host`. 
+The Prometheus config referenced `alert_manager` (underscore) while the actual Docker 
+Compose service was named `alertmanager`. Fixed by aligning the two, confirmed via 
+`curl localhost:9093/api/v2/alerts` returning the alert object instead of an empty array.
 
-6 alert rules covering: service availability, error rate (warning + critical),
-p95 latency, Redis availability, disk usage, and error budget burn rate.
-All alerts link to runbooks in [docs/runbooks/](docs/runbooks/).
+## Experiments Run
 
-## Chaos experiments run
+| # | Experiment | Result | MTTD/MTTR |
+|---|---|---|---|
+| 1 | Kill API container | Alert fired, service auto-restarted | [fill in] |
+| 2 | Kill Redis | Availability held, latency SLO breached | [fill in] |
+| 3 | Fill disk | Infrastructure alert fired at 80% | [fill in] |
+| 4 | 200ms network latency injection | 0% errors, latency SLO breached | [fill in] |
+| 5 | 300 req/s spike | Pool absorbed load, no connection errors | [fill in] |
 
-| Scenario | SLO impact | MTTD | MTTR |
-|----------|-----------|------|------|
-| API container killed | Availability breached | ~62s | [your number] |
-| Redis killed | Latency breached, availability held | ~90s | [your number] |
-| Disk fill | Infrastructure alert fired | ~8min | Immediate |
-| 200ms latency injected | Latency breached, 0% errors | ~5min | Immediate |
-| 200 req/s spike | Error budget fast burn | ~5min | Auto-resolved |
+## Dashboards
 
-Post-mortems: [2024-01 API down](docs/postmortems/2024-01-api-down.md)
+![RED Dashboard](docs/screenshots/red-dashboard.png)
+![Cache Hit Ratio + Latency](docs/screenshots/redis-failure-comparison.png)
+![Alertmanager Firing](docs/screenshots/alertmanager-firing.png)
 
-## Key metrics tracked
+## Repository Structure
 
-- `shorturl_requests_total` — all requests by endpoint, method, status
-- `shorturl_request_duration_seconds` — latency histogram by endpoint
-- `shorturl_cache_hits_total` — Redis hit/miss ratio
-- `shorturl_active_urls_total` — current URL count gauge
-
-## What I learned
-
-Building this project, I discovered that **latency SLOs catch what availability SLOs miss** —
-demonstrated in Scenario 2 where Redis failure caused 0% error rate but violated the p95 SLO.
-I also learned that inhibition rules in Alertmanager are essential for reducing alert noise:
-when the service is completely down, downstream latency warnings are meaningless.
+```
+reliability-platform/
+├── app/                    # Flask app, pooling, circuit breaker, structured logging
+├── monitoring/             # Prometheus, Alertmanager, Loki configs
+├── scripts/                # Load generator, chaos injection, backup
+├── backups/                # pg_dump output (gitignored, structure only)
+└── docs/
+    ├── evidence/           # Raw test output
+    ├── screenshots/        # Grafana/Alertmanager proof
+    ├── observations/       # Per-experiment analysis
+    └── postmortems/        # Blameless post-mortems
+```
