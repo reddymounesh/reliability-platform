@@ -1,0 +1,30 @@
+=== EXPERIMENT 5: Load Spike — Connection Pool Test ===
+Load Generator starting — 300 req/s
+Running for 60.0 seconds
+
+Seeding URLs...
+  Seeded: https://nutanix.com → 48d69c3
+  Seeded: https://prometheus.io → 06b9f2f
+  Seeded: https://grafana.com → 74cc097
+  Seeded: https://kubernetes.io → dde80f3
+  Seeded: https://python.org → b020aa1
+  Seeded: https://github.com → 3097fca
+  Seeded: https://linux.org → 5cd0356
+Seeded 7 URLs
+
+[01:17:03] Total: 539 | RPS: 53.7 | Errors: 0 (0.0%)
+[01:17:13] Total: 1,255 | RPS: 62.6 | Errors: 0 (0.0%)
+[01:17:23] Total: 1,961 | RPS: 65.3 | Errors: 0 (0.0%)
+[01:17:33] Total: 2,617 | RPS: 65.4 | Errors: 0 (0.0%)
+[01:17:43] Total: 3,288 | RPS: 65.7 | Errors: 0 (0.0%)
+
+Done. Total requests: 4006
+--- Pool availability during spike ---
+{
+    "status": "success",
+    "data": {
+        "resultType": "vector",
+        "result": []
+    }
+}
+--- Error rate during spike (should stay low) ---

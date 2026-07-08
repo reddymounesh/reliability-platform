@@ -1,0 +1,9 @@
+=== EXPERIMENT 1: API Container Kill ===
+Killed at: 00:35:00
+Waiting 75s for alert to fire (for: 1m threshold)...
+--- Prometheus rule state ---
+ShortURLServiceDown | pending
+--- Alertmanager received ---
+[]
+{"checks":{"database":"ok","redis":"ok"},"status":"ok"}
+Killed: 00:35:00 | Recovery started: 00:36:29 | Recovered: 00:36:39

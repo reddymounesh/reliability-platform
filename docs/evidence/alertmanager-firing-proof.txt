@@ -1,0 +1,31 @@
+[
+    {
+        "annotations": {
+            "description": "Prometheus cannot scrape app:5000. Service may be down.",
+            "runbook": "https://github.com/you/repo/blob/main/docs/runbooks/service-down.md",
+            "summary": "URL shortener API is unreachable"
+        },
+        "endsAt": "2026-07-08T19:16:50.790Z",
+        "fingerprint": "ef7e81228e78ca34",
+        "receivers": [
+            {
+                "name": "critical-receiver"
+            }
+        ],
+        "startsAt": "2026-07-08T19:12:50.790Z",
+        "status": {
+            "inhibitedBy": [],
+            "mutedBy": [],
+            "silencedBy": [],
+            "state": "active"
+        },
+        "updatedAt": "2026-07-08T19:12:50.793Z",
+        "generatorURL": "http://0b9e6312a456:9090/graph?g0.expr=up%7Bjob%3D%22shorturl-api%22%7D+%3D%3D+0&g0.tab=1",
+        "labels": {
+            "alertname": "ShortURLServiceDown",
+            "instance": "app:5000",
+            "job": "shorturl-api",
+            "severity": "critical"
+        }
+    }
+]

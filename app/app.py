@@ -50,8 +50,31 @@ ACTIVE_URLS = Gauge(
     
 )
 
-def get_db():
-    """Create a fresh PostgresSQL connection."""
+from psycopg2 import pool
+
+db_pool = pool.ThreadedConnectionPool(
+    minconn=2,maxconn=20,
+    host=os.environ.get('DB_HOST','localhost'),
+    port=os.environ.get('DB_PORT',5432),
+    database=os.environ.get('DB_NAME','urldb'),
+    user=os.environ.get('DB_USER','urluser'),
+    password=os.environ.get('DB_PASSWORD','urlpass')
+)
+
+def get_Db_conn():
+    return db_pool.getconn()
+
+def release_db_conn(conn):
+    db_pool.putconn(conn)
+
+POOL_AVALIABLE = Gauge('shorturl_db_pool_available_connections','Number of available connections in the DB pool')   
+   
+   
+def update_db_pool_metrics():
+    POOL_AVALIABLE.set(len(db_pool._pool)) 
+    
+"""def get_db():
+    """"Create a fresh PostgresSQL connection.""""
     return psycopg2.connect(
         host=os.environ.get('DB_HOST','localhost'),
         port=os.environ.get('DB_PORT',5432),
@@ -59,7 +82,7 @@ def get_db():
         user=os.environ.get('DB_USER','urluser'),
         password=os.environ.get('DB_PASSWORD','urlpass')
         
-    )
+    )"""
     
 def get_cache():
     """Create a fresh Redis connection."""
@@ -74,7 +97,7 @@ def get_cache():
 def init_db():
     """Create the urls table id it doesn't exists."""
     
-    conn=get_db()
+    conn=get_Db_conn()
     cur=conn.cursor()
     cur.execute('''
                 CREATE TABLE IF NOT EXISTS urls(
@@ -87,7 +110,7 @@ def init_db():
                 ''')
     conn.commit()
     cur.close()
-    conn.close()
+    release_db_conn(conn)
     logger.info("Database initialised successfully")
     
     
@@ -119,7 +142,7 @@ def shorten():
         
         short_code = make_short_code(long_url)
         
-        conn=get_db()
+        conn=get_Db_conn()
         cur=conn.cursor()
         cur.execute(
             '''INSERT INTO urls (code,long_url)
@@ -129,8 +152,7 @@ def shorten():
         )
         conn.commit()
         cur.close
-        conn.close()
-        
+        release_db_conn(conn)        
         _update_url_count()
         
         REQUESTS_TOTAL.labels(
@@ -178,7 +200,7 @@ def redirect_url(code):
         
         CACHE_HITS.labels(result='miss').inc()
         
-        conn=get_db()
+        conn=get_Db_conn()
         cur=conn.cursor()
         cur.execute(
             'SELECT long_url FROM urls WHERE code = %s', (code,)
@@ -187,7 +209,7 @@ def redirect_url(code):
         
         if not row:
             cur.close()
-            conn.close()
+            release_db_conn(conn)
             REQUESTS_TOTAL.labels(
                 endpoint='/r',method='GET',status_code='404'
             ).inc()
@@ -200,8 +222,7 @@ def redirect_url(code):
         )
         conn.commit()
         cur.close()
-        conn.close()
-        
+        release_db_conn(conn)        
         cache.setex(f'url:{code}',3600,long_url)
         
         REQUESTS_TOTAL.labels(
@@ -217,13 +238,12 @@ def redirect_url(code):
         CACHE_HITS.labels(result='miss').inc()
         
         try:
-            conn=get_db()
+            conn=get_Db_conn()
             cur= conn.cursor()
             cur.execute('SELECT long_url FROM urls WHERE code = %s', (code,))
             row=cur.fetchone()
             cur.close()
-            conn.close()
-            
+            release_db_conn(conn)            
             if not row:
                 REQUESTS_TOTAL.labels(
                     endpoint='/r',method='GET',status_code='404'
@@ -265,8 +285,8 @@ def health():
     status = {'status':'ok','checks':{}}
     
     try:
-        conn=get_db()
-        conn.close()
+        conn=get_Db_conn()
+        release_db_conn(conn)
         status['checks']['database']='ok'
         
     except Exception as e:
@@ -289,16 +309,38 @@ def health():
 
 def _update_url_count():
     try:
-        conn=get_db()
+        conn=get_Db_conn()
         cur=conn.cursor()
         cur.execute('SELECT COUNT(*) FROM urls')
         count = cur.fetchone()[0]
         cur.close()
-        conn.close()
+        release_db_conn(conn)
         ACTIVE_URLS.set(count)
     except Exception as e:
         logger.warning("Could not update URL count gauge: %s",e)
         
+ 
+import json, logging, sys
+
+class JSONFormatter(logging.Formatter):
+    def format(self,record):
+        log_obj={
+            "timestamp":self.formatTime(record),
+            "level":record.levelname,
+            "message":record.getMessage(),
+            "module":record.module,
+        }
+        if hasattr(record,'request_id'):
+            log_obj['request_id']=record.request_id
+        return json.dumps(log_obj)
+    
+handler=logging.StreamHandler(sys.stdout)
+handler.setFormatter(JSONFormatter())
+logger=logging.getLogger(__name__)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+ 
         
 if __name__  == '__main__':
     logger.info("Starting URL Shortner API ...")

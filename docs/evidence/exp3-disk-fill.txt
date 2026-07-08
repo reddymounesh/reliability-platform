@@ -1,0 +1,6 @@
+=== EXPERIMENT 3: Disk Fill ===
+419430400 bytes (419 MB, 400 MiB) copied, 7.607 s, 55.1 MB/s
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         456G  345G   88G  80% /
+Waiting 10 minutes for DiskUsageHigh alert (for: 10m)...
+DiskUsageHigh | inactive
