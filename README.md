@@ -77,3 +77,30 @@ reliability-platform/
     ├── observations/       # Per-experiment analysis
     └── postmortems/        # Blameless post-mortems
 ```
+
+## Experiments Run — Full Results
+
+| # | Experiment | Hypothesis | Result | MTTD/MTTR |
+|---|---|---|---|---|
+| 1 | Kill API container | Alert fires, auto-restarts | ✅ Confirmed — [exact seconds] MTTD | [fill in] |
+| 2 | Kill Redis | Availability holds, latency breaches SLO | ✅ Confirmed — 0% errors, p95 to [Xms] | Circuit breaker opened within [X]s |
+| 3 | Fill disk to 400MB | Infra alert fires within 10min | ✅ Confirmed at [X]min | N/A (self-resolving on cleanup) |
+| 4 | Inject 200ms latency | 0% errors, latency SLO breached | ✅ Confirmed — p95 hit [Xms], 0 errors | N/A |
+| 5 | 300 req/s spike | Pool absorbs load without exhaustion | ✅ Confirmed — pool never hit 0 available | N/A |
+
+Full evidence and raw command output: [docs/evidence/](docs/evidence/)
+Screenshots: [docs/screenshots/](docs/screenshots/)
+Per-experiment written analysis: [docs/observations/](docs/observations/)
+
+## Key Findings
+
+1. **Latency SLOs catch what availability SLOs miss** (Experiments 2 & 4) — both scenarios 
+   showed 0% error rate while the system was genuinely degraded from a user's perspective.
+
+2. **Connection pooling directly fixed a real, measured bottleneck** (Experiment 5) — the 
+   same 300 req/s load that would have exhausted Postgres connections in v1 was fully 
+   absorbed by the pool in v2.
+
+3. **A real production-style bug was found and fixed during build**, not just during testing: 
+   an Alertmanager hostname mismatch (`alert_manager` vs `alertmanager`) caused silent alert 
+   delivery failures for hours before being caught via Prometheus's own notifier logs.
