@@ -340,8 +340,70 @@ logger=logging.getLogger(__name__)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
- 
+
+logger = logging.getLogger(__name__)
+
+class CircuitBreaker:
+    
+    def __init__(self,failure_threshold: int=5,recovery_time:int=30):
+        self.failure_threshold=failure_threshold
+        self.recovery_time=recovery_time
+        self.failures=0
+        self.opened_at=None
+        self.state="CLOSED"
         
+    def record_success(self):
+        if self.state != "CLOSED":
+            logger.info("Circuit breaker recovering: %s -> ClOSED", self.state)
+        self.failures = 0
+        self.state="CLOSED"
+        
+    def record_failure(self):
+        self.failures += 1
+        if self.failures >= self.failure_threshold:
+            self.state="OPEN"
+            self.opened_at=time.time()
+            logger.warning("Circuit breaker opened due to %d failures",self.failures)
+            
+    def allow_request(self):
+        if self.state == "CLOSED":
+            return True
+        
+        if self.state == "OPEN":
+            elasped = time.time() - self.opened_at
+            if elasped > self.recovery_time:
+                self.state="HALF_OPEN"
+                
+                logger.info("CIRCUIT breaker testing recovery: OPEN -> HALF_OPEN")
+                return True
+                
+            return False
+        return True
+ 
+redis_breaker = CircuitBreaker(failure_threshold=3,recovery_time=30)
+
+CIRCUIT_STATE = Gauge('shorturl_circuit_breaker_state','Circuit breaker state: 0=closed 1=open 2=half_open')
+
+STATE_VALUES = {"CLOSED":0, "OPEN":1, "HALF_OPEN":2}
+
+def get_from_cache_safely(code: str):
+    
+    if not redis_breaker.allow_request():
+        CIRCUIT_STATE.set(STATE_VALUES[redis_breaker.state])
+        return None
+    
+    try:
+        cache = get_cache()
+        result = cache.get(f'url:{code}')
+        redis_breaker.record_success()
+        CIRCUIT_STATE.set(STATE_VALUES[redis_breaker.state])
+        return result
+    
+    except redis.execeptions.ConnectionError:
+        redis_breaker.record_failure()
+        CIRCUIT_STATE.set(STATE_VALUES[redis_breaker.state])
+        return None
+    
 if __name__  == '__main__':
     logger.info("Starting URL Shortner API ...")
     init_db()
