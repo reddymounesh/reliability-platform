@@ -6,7 +6,87 @@ aggregation, SLO-driven alerting, and tested backup/recovery procedures.
 
 ## Architecture
 
-[Paste the full diagram from above as a code block or export as an image]
+┌──────────────────┐
+                        │  Load Generator    │
+                        │  (external client)  │
+                        └─────────┬──────────┘
+                                  │ HTTP
+                                  ▼
+                        ┌──────────────────┐
+                        │      NGINX         │
+                        │  reverse proxy      │
+                        │  :8080 → :80        │
+                        └─────────┬──────────┘
+                                  │
+                                  ▼
+                    ┌───────────────────────────┐
+                    │         Flask App           │
+                    │  ┌─────────────────────┐   │
+                    │  │  Connection Pool      │   │
+                    │  │  (2-20 to Postgres)   │   │
+                    │  └──────────┬───────────┘   │
+                    │  ┌──────────┴───────────┐   │
+                    │  │  Structured JSON       │   │
+                    │  │  Logger → stdout        │   │
+                    │  └───────────────────────┘   │
+                    └──────┬──────────────┬────────┘
+                           │              │
+                    (pooled conn)    (direct call)
+                           ▼              ▼
+                  ┌─────────────┐  ┌─────────────┐
+                  │ PostgreSQL    │  │    Redis     │
+                  │ (source of    │  │  (TTL cache) │
+                  │  truth)       │  │              │
+                  └──────┬───────┘  └──────┬───────┘
+                         │                  │
+              ┌──────────┴────────┐  ┌──────┴──────────┐
+              │ Postgres Exporter  │  │  Redis Exporter   │
+              └──────────┬────────┘  └──────┬──────────┘
+                         │                  │
+    ┌────────────────────┼──────────────────┼─────────────────┐
+    │                    │                  │                 │
+    ▼                    ▼                  ▼                 ▼
+┌─────────┐    ┌──────────────────────────────┐    ┌─────────────────┐
+│  Node    │    │          PROMETHEUS             │    │    Blackbox       │
+│ Exporter │───▶│  scrapes 6 targets/15s          │◀───│    Exporter       │
+└─────────┘    │  evaluates alerts.yml/15s        │    │ (synthetic HTTP)  │
+               └──────┬───────────────────┬───────┘    └─────────────────┘
+                       │                   │
+              alert fires│                   │queried by
+                       ▼                   ▼
+            ┌─────────────────┐   ┌───────────────────┐
+            │  Alertmanager     │   │      Grafana        │
+            │  :9093             │   │      :3000           │
+            │  routes/groups/    │   │  RED + USE dashboards │
+            │  inhibits           │   │  + Loki logs panel    │
+            └────────┬──────────┘   └──────────┬─────────┘
+                     │                          │
+                     ▼                          │ queries
+            ┌─────────────────┐                │
+            │ Webhook Logger    │                │
+            │ logs alert to      │                │
+            │ console            │                │
+            └─────────────────┘                │
+                                                 │
+                                       ┌─────────┴─────────┐
+                                       │   Loki  :3100        │
+                                       │  (log storage)        │
+                                       └─────────┬─────────┘
+                                                 ▲
+                                                 │ ships logs
+                                       ┌─────────┴─────────┐
+                                       │     Promtail          │
+                                       │ (tails all container   │
+                                       │  logs via docker.sock) │
+                                       └───────────────────┘
+
+              ┌───────────────────────────────────┐
+              │   scripts/backup.sh (cron/manual)     │
+              │   pg_dump → ./backups/*.sql            │
+              │   keeps last 7, tested via restore drill│
+              └───────────────────────────────────┘
+
+  All 14 containers on one Docker network: "platform" (bridge driver)
 
 **14 containers**, one Docker network:
 NGINX → Flask (pooled connections) → PostgreSQL + Redis
