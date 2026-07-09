@@ -5,86 +5,8 @@ service — demonstrating SRE practices: connection pooling, structured logging 
 aggregation, SLO-driven alerting, and tested backup/recovery procedures.
 
 ## Architecture
+<img width="210" height="150" alt="architecture-diagram" src="https://github.com/user-attachments/assets/ce310986-e6c3-44b1-94a4-f09ab4c073c6" />
 
-┌──────────────────┐
-                        │  Load Generator    │
-                        │  (external client)  │
-                        └─────────┬──────────┘
-                                  │ HTTP
-                                  ▼
-                        ┌──────────────────┐
-                        │      NGINX         │
-                        │  reverse proxy      │
-                        │  :8080 → :80        │
-                        └─────────┬──────────┘
-                                  │
-                                  ▼
-                    ┌───────────────────────────┐
-                    │         Flask App           │
-                    │  ┌─────────────────────┐   │
-                    │  │  Connection Pool      │   │
-                    │  │  (2-20 to Postgres)   │   │
-                    │  └──────────┬───────────┘   │
-                    │  ┌──────────┴───────────┐   │
-                    │  │  Structured JSON       │   │
-                    │  │  Logger → stdout        │   │
-                    │  └───────────────────────┘   │
-                    └──────┬──────────────┬────────┘
-                           │              │
-                    (pooled conn)    (direct call)
-                           ▼              ▼
-                  ┌─────────────┐  ┌─────────────┐
-                  │ PostgreSQL    │  │    Redis     │
-                  │ (source of    │  │  (TTL cache) │
-                  │  truth)       │  │              │
-                  └──────┬───────┘  └──────┬───────┘
-                         │                  │
-              ┌──────────┴────────┐  ┌──────┴──────────┐
-              │ Postgres Exporter  │  │  Redis Exporter   │
-              └──────────┬────────┘  └──────┬──────────┘
-                         │                  │
-    ┌────────────────────┼──────────────────┼─────────────────┐
-    │                    │                  │                 │
-    ▼                    ▼                  ▼                 ▼
-┌─────────┐    ┌──────────────────────────────┐    ┌─────────────────┐
-│  Node    │    │          PROMETHEUS             │    │    Blackbox       │
-│ Exporter │───▶│  scrapes 6 targets/15s          │◀───│    Exporter       │
-└─────────┘    │  evaluates alerts.yml/15s        │    │ (synthetic HTTP)  │
-               └──────┬───────────────────┬───────┘    └─────────────────┘
-                       │                   │
-              alert fires│                   │queried by
-                       ▼                   ▼
-            ┌─────────────────┐   ┌───────────────────┐
-            │  Alertmanager     │   │      Grafana        │
-            │  :9093             │   │      :3000           │
-            │  routes/groups/    │   │  RED + USE dashboards │
-            │  inhibits           │   │  + Loki logs panel    │
-            └────────┬──────────┘   └──────────┬─────────┘
-                     │                          │
-                     ▼                          │ queries
-            ┌─────────────────┐                │
-            │ Webhook Logger    │                │
-            │ logs alert to      │                │
-            │ console            │                │
-            └─────────────────┘                │
-                                                 │
-                                       ┌─────────┴─────────┐
-                                       │   Loki  :3100        │
-                                       │  (log storage)        │
-                                       └─────────┬─────────┘
-                                                 ▲
-                                                 │ ships logs
-                                       ┌─────────┴─────────┐
-                                       │     Promtail          │
-                                       │ (tails all container   │
-                                       │  logs via docker.sock) │
-                                       └───────────────────┘
-
-              ┌───────────────────────────────────┐
-              │   scripts/backup.sh (cron/manual)     │
-              │   pg_dump → ./backups/*.sql            │
-              │   keeps last 7, tested via restore drill│
-              └───────────────────────────────────┘
 
   All 14 containers on one Docker network: "platform" (bridge driver)
 
@@ -127,15 +49,7 @@ The Prometheus config referenced `alert_manager` (underscore) while the actual D
 Compose service was named `alertmanager`. Fixed by aligning the two, confirmed via 
 `curl localhost:9093/api/v2/alerts` returning the alert object instead of an empty array.
 
-## Experiments Run
 
-| # | Experiment | Result | MTTD/MTTR |
-|---|---|---|---|
-| 1 | Kill API container | Alert fired, service auto-restarted | [fill in] |
-| 2 | Kill Redis | Availability held, latency SLO breached | [fill in] |
-| 3 | Fill disk | Infrastructure alert fired at 80% | [fill in] |
-| 4 | 200ms network latency injection | 0% errors, latency SLO breached | [fill in] |
-| 5 | 300 req/s spike | Pool absorbed load, no connection errors | [fill in] |
 
 ## Dashboards
 
