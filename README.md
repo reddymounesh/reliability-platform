@@ -18,7 +18,7 @@ NGINX → Flask (pooled connections) → PostgreSQL + Redis
 ## Quick Start
 
 ```bash
-git clone https://github.com/YOURUSERNAME/reliability-platform
+git clone https://github.com/reddymounesh/reliability-platform
 cd reliability-platform
 docker compose up --build -d
 python3 scripts/load_generator.py --rps 20
